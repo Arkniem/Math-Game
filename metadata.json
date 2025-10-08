@@ -1,0 +1,7 @@
+{
+  "name": "Mental Math Quiz",
+  "description": "",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
