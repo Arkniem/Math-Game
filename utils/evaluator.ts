@@ -6,9 +6,12 @@ const precedence: { [key: string]: number } = {
   '-': 1,
   '*': 2,
   '/': 2,
+  '^': 3, // Highest precedence for exponents
 };
 
-// Applies a given operator to two numbers.
+const functions = ['sqrt', 'abs'];
+
+// Applies a given binary operator to two numbers.
 function applyOp(op: string, b: number, a: number): number {
   switch (op) {
     case '+': return a + b;
@@ -17,15 +20,26 @@ function applyOp(op: string, b: number, a: number): number {
     case '/':
       if (b === 0) throw new Error("Division by zero");
       return a / b;
+    case '^': return Math.pow(a, b);
   }
   throw new Error(`Unsupported operator: ${op}`);
+}
+
+// Applies a given unary function to one number.
+function applyFunc(func: string, a: number): number {
+  switch (func) {
+    case 'sqrt':
+      if (a < 0) throw new Error("Square root of a negative number");
+      return Math.sqrt(a);
+    case 'abs': return Math.abs(a);
+  }
+  throw new Error(`Unsupported function: ${func}`);
 }
 
 /**
  * Recursively traverses the nested QuestionPart structure and flattens it into a
  * single array of tokens suitable for the Shunting-yard algorithm.
- * It wraps fractions and groups in parentheses to preserve their integrity.
- * It also correctly identifies and handles unary minus operators and implicit multiplication.
+ * It wraps complex structures in parentheses to preserve their integrity.
  */
 function flattenToTokens(parts: QuestionPart[]): (string | number)[] {
   const initialTokens: (string | number)[] = [];
@@ -41,19 +55,40 @@ function flattenToTokens(parts: QuestionPart[]): (string | number)[] {
           if (!isNaN(parseFloat(value))) {
             initialTokens.push(parseFloat(value));
           } else if (value === '-') {
-            // A minus is unary if it's the first token or follows an operator or an open parenthesis.
             const prevToken = initialTokens.length > 0 ? initialTokens[initialTokens.length - 1] : null;
-            const isUnary = initialTokens.length === 0 || (typeof prevToken === 'string' && ['(', '+', '-', '*', '/'].includes(prevToken));
+            const isUnary = initialTokens.length === 0 || (typeof prevToken === 'string' && ['(', '+', '-', '*', '/', '^'].includes(prevToken));
             if (isUnary) {
               initialTokens.push(-1, '*');
             } else {
-              initialTokens.push('-'); // It's a binary subtraction operator.
+              initialTokens.push('-');
             }
-          } else if (['+', '*', '/', '(', ')'].includes(value)) {
+          } else if (['+', '*', '/', '(', ')', '^'].includes(value)) {
             initialTokens.push(value);
           }
           break;
+        
+        case 'power':
+          initialTokens.push('(');
+          processParts(part.base);
+          initialTokens.push(')');
+          initialTokens.push('^');
+          initialTokens.push('(');
+          processParts(part.exponent);
+          initialTokens.push(')');
+          break;
 
+        case 'root':
+          initialTokens.push('sqrt', '(');
+          processParts(part.content);
+          initialTokens.push(')');
+          break;
+
+        case 'absolute':
+          initialTokens.push('abs', '(');
+          processParts(part.content);
+          initialTokens.push(')');
+          break;
+          
         case 'fraction':
           initialTokens.push('(');
           processParts(part.numerator);
@@ -75,7 +110,6 @@ function flattenToTokens(parts: QuestionPart[]): (string | number)[] {
   
   processParts(parts);
   
-  // Post-processing step to handle implicit multiplication
   const finalTokens: (string | number)[] = [];
   if (initialTokens.length === 0) {
       return [];
@@ -89,14 +123,12 @@ function flattenToTokens(parts: QuestionPart[]): (string | number)[] {
     
     if (nextToken === undefined) break;
 
-    // Case 1: number followed by an opening parenthesis => 5( => 5 * (
     const isNumberThenParen = typeof currentToken === 'number' && nextToken === '(';
-    // Case 2: closing parenthesis followed by a number => )5 => ) * 5
     const isParenThenNumber = currentToken === ')' && typeof nextToken === 'number';
-    // Case 3: two parentheses next to each other => )( => ) * (
     const isParenThenParen = currentToken === ')' && nextToken === '(';
+    const isNumberThenFunction = typeof currentToken === 'number' && typeof nextToken === 'string' && functions.includes(nextToken);
 
-    if (isNumberThenParen || isParenThenNumber || isParenThenParen) {
+    if (isNumberThenParen || isParenThenNumber || isParenThenParen || isNumberThenFunction) {
       finalTokens.push('*');
     }
   }
@@ -107,7 +139,7 @@ function flattenToTokens(parts: QuestionPart[]): (string | number)[] {
 
 /**
  * Converts an array of infix tokens to postfix (Reverse Polish Notation) using the Shunting-yard algorithm.
- * This correctly arranges numbers and operators to respect the order of operations.
+ * This correctly arranges numbers and operators to respect the order of operations and function calls.
  */
 function toPostfix(tokens: (string | number)[]): (string | number)[] {
   const outputQueue: (string | number)[] = [];
@@ -116,11 +148,17 @@ function toPostfix(tokens: (string | number)[]): (string | number)[] {
   for (const token of tokens) {
     if (typeof token === 'number') {
       outputQueue.push(token);
-    } else if (typeof token === 'string' && token in precedence) { // is an operator
+    } else if (typeof token === 'string' && functions.includes(token)) {
+      operatorStack.push(token);
+    } else if (typeof token === 'string' && token in precedence) {
       while (
         operatorStack.length > 0 &&
         operatorStack[operatorStack.length - 1] !== '(' &&
-        precedence[operatorStack[operatorStack.length - 1]] >= precedence[token]
+        (
+          precedence[operatorStack[operatorStack.length - 1]] > precedence[token] ||
+          // Handle left-associativity for operators of same precedence (except for '^')
+          (precedence[operatorStack[operatorStack.length - 1]] === precedence[token] && token !== '^')
+        )
       ) {
         outputQueue.push(operatorStack.pop()!);
       }
@@ -131,10 +169,14 @@ function toPostfix(tokens: (string | number)[]): (string | number)[] {
       while (operatorStack.length > 0 && operatorStack[operatorStack.length - 1] !== '(') {
         outputQueue.push(operatorStack.pop()!);
       }
-      if (operatorStack[operatorStack.length - 1] === '(') {
+      if (operatorStack.length > 0 && operatorStack[operatorStack.length - 1] === '(') {
         operatorStack.pop(); // Discard '('
       } else {
         throw new Error("Mismatched parentheses");
+      }
+      // If a function is at the top of the stack, move it to the output queue
+      if (operatorStack.length > 0 && functions.includes(operatorStack[operatorStack.length - 1])) {
+        outputQueue.push(operatorStack.pop()!);
       }
     }
   }
@@ -157,7 +199,13 @@ function evaluatePostfix(postfix: (string | number)[]): number {
   for (const token of postfix) {
     if (typeof token === 'number') {
       stack.push(token);
-    } else { // is an operator
+    } else if (functions.includes(token as string)) {
+      const a = stack.pop();
+      if (a === undefined) {
+        throw new Error("Invalid expression: insufficient values for a function.");
+      }
+      stack.push(applyFunc(token as string, a));
+    } else { // is a binary operator
       const b = stack.pop();
       const a = stack.pop();
       if (a === undefined || b === undefined) {

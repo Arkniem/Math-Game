@@ -10,9 +10,15 @@ const stringifyQuestion = (question: QuestionPart[]): string => {
       case 'string':
         return part.value;
       case 'fraction':
-        return `(${stringifyQuestion(part.numerator)} / ${stringifyQuestion(part.denominator)})`;
+        return `{${stringifyQuestion(part.numerator)} / ${stringifyQuestion(part.denominator)}}`;
       case 'group':
         return `(${stringifyQuestion(part.content)})`;
+      case 'power':
+        return `${stringifyQuestion(part.base)}^(${stringifyQuestion(part.exponent)})`;
+      case 'root':
+        return `sqrt(${stringifyQuestion(part.content)})`;
+      case 'absolute':
+        return `|${stringifyQuestion(part.content)}|`;
       default:
         return '';
     }
@@ -52,7 +58,7 @@ Your goal is to generate problems where a proficient user's 'timeTaken' is close
     -   If they have been incorrect on several recent problems, make a **significant decrease** ('significant_decrease').
 
 **Target Problem Complexity:**
-As the user demonstrates skill, you should gradually generate problems that combine multiple concepts, such as negative numbers, decimals, complex/nested fractions, and multi-step operations.
+As the user demonstrates skill, you should gradually generate problems that combine multiple concepts, such as negative numbers, decimals, complex/nested fractions, multi-step operations, exponents, square roots, and absolute values.
 
 **Rules for Generation:**
 1.  The response must be a JSON object with three keys: "difficultyAdjustment" (a string literal), "question" (the recursive array of parts), and "estimatedTime" (an integer in seconds). You can optionally include a "reasoning" key.
@@ -61,6 +67,9 @@ As the user demonstrates skill, you should gradually generate problems that comb
     -   Numbers/operators: \`{ "type": "string", "value": "..." }\`.
     -   Fractions: \`{ "type": "fraction", "numerator": [...parts], "denominator": [...parts] }\`.
     -   Parentheses: \`{ "type": "group", "content": [...parts] }\`.
+    -   Exponents: \`{ "type": "power", "base": [...parts], "exponent": [...parts] }\`.
+    -   Square Roots: \`{ "type": "root", "content": [...parts] }\`.
+    -   Absolute Values: \`{ "type": "absolute", "content": [...parts] }\`.
 4.  **You MUST NOT provide the answer.** Only generate the question structure.
 5.  **Variety Mandate:** Do not generate a problem that is identical to any of the questions in the provided performance history.
 
@@ -69,7 +78,20 @@ ${historySnippet}
 Based on this time-sensitive analysis, generate the next single, challenging problem now.
 `;
 
-  // FIX: Added a response schema to ensure the API returns a valid JSON object in the expected format.
+  // FIX: The original schema had empty `properties` for nested objects, causing an API validation error.
+  // This new schema defines the structure one level deep to satisfy the validator. The model is
+  // expected to generalize the recursive structure from the detailed prompt instructions.
+  const subPartSchema = {
+    type: Type.OBJECT,
+    properties: {
+      type: { type: Type.STRING },
+      value: { type: Type.STRING, nullable: true },
+      // To prevent schema recursion, we don't define numerator/denominator/content etc. here,
+      // but the model can still generate them based on the prompt.
+    },
+    required: ['type'],
+  };
+  
   const problemSchema = {
     type: Type.OBJECT,
     properties: {
@@ -85,9 +107,11 @@ Based on this time-sensitive analysis, generate the next single, challenging pro
           properties: {
             type: { type: Type.STRING },
             value: { type: Type.STRING, nullable: true },
-            numerator: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {} }, nullable: true },
-            denominator: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {} }, nullable: true },
-            content: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {} }, nullable: true },
+            numerator: { type: Type.ARRAY, items: subPartSchema, nullable: true },
+            denominator: { type: Type.ARRAY, items: subPartSchema, nullable: true },
+            content: { type: Type.ARRAY, items: subPartSchema, nullable: true },
+            base: { type: Type.ARRAY, items: subPartSchema, nullable: true },
+            exponent: { type: Type.ARRAY, items: subPartSchema, nullable: true },
           },
           required: ['type'],
         },

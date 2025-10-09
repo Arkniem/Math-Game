@@ -11,7 +11,6 @@ const RecursiveRenderer: React.FC<{ parts: QuestionPart[] }> = ({ parts }) => (
         case 'fraction':
           return (
             <div key={index} className="inline-flex flex-col text-center leading-none mx-2">
-              {/* Note the recursive call here */}
               <div className="py-2"><RecursiveRenderer parts={part.numerator || []} /></div>
               <span className="border-t-2 border-pencil w-full"></span>
               <div className="py-2"><RecursiveRenderer parts={part.denominator || []} /></div>
@@ -21,11 +20,36 @@ const RecursiveRenderer: React.FC<{ parts: QuestionPart[] }> = ({ parts }) => (
           return (
             <React.Fragment key={index}>
               <span className="font-kalam text-5xl md:text-6xl">(</span>
-              {/* And here */}
               <div className="mx-1"><RecursiveRenderer parts={part.content || []} /></div>
               <span className="font-kalam text-5xl md:text-6xl">)</span>
             </React.Fragment>
           );
+        case 'power':
+            return (
+              <div key={index} className="inline-flex items-baseline">
+                <RecursiveRenderer parts={part.base || []} />
+                <sup className="font-kalam text-3xl md:text-4xl leading-none ml-1">
+                  <RecursiveRenderer parts={part.exponent || []} />
+                </sup>
+              </div>
+            );
+        case 'root':
+            return (
+                <div key={index} className="inline-flex items-center">
+                    <span className="font-kalam text-5xl md:text-6xl">&radic;</span>
+                    <div className="inline-block border-t-2 border-pencil -ml-2 pl-2">
+                        <RecursiveRenderer parts={part.content || []} />
+                    </div>
+                </div>
+            );
+        case 'absolute':
+            return (
+                <React.Fragment key={index}>
+                    <span className="font-kalam text-5xl md:text-6xl font-thin">|</span>
+                    <div className="mx-2"><RecursiveRenderer parts={part.content || []} /></div>
+                    <span className="font-kalam text-5xl md:text-6xl font-thin">|</span>
+                </React.Fragment>
+            );
         default:
           return null;
       }

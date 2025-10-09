@@ -3,7 +3,10 @@ export type DifficultyAdjustment = 'initial' | 'shocking_leap' | 'significant_in
 export type QuestionPart =
   | { type: 'string'; value: string }
   | { type: 'fraction'; numerator: QuestionPart[]; denominator: QuestionPart[] }
-  | { type: 'group'; content: QuestionPart[] };
+  | { type: 'group'; content: QuestionPart[] }
+  | { type: 'power'; base: QuestionPart[]; exponent: QuestionPart[] }
+  | { type: 'root'; content: QuestionPart[] }
+  | { type: 'absolute'; content: QuestionPart[] };
 
 // This is what the AI returns
 export interface Problem {
