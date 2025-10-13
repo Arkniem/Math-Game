@@ -40,3 +40,15 @@ export const BackspaceIcon: React.FC<{ className?: string }> = ({ className }) =
         <line x1="12" y1="9" x2="18" y2="15"></line>
     </svg>
 );
+
+export const IncreaseDifficultyIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/>
+    </svg>
+);
+
+export const SkipIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
+    </svg>
+);

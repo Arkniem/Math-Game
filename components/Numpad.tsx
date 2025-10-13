@@ -1,9 +1,10 @@
 import React from 'react';
-import { BackspaceIcon } from './Icons';
+import { BackspaceIcon, IncreaseDifficultyIcon, SkipIcon } from './Icons';
 
 interface NumpadProps {
   onInput: (key: string) => void;
   disabled?: boolean;
+  userAnswer: string;
 }
 
 const NumpadButton: React.FC<{
@@ -22,7 +23,8 @@ const NumpadButton: React.FC<{
   </button>
 );
 
-const Numpad: React.FC<NumpadProps> = ({ onInput, disabled }) => {
+const Numpad: React.FC<NumpadProps> = ({ onInput, disabled, userAnswer }) => {
+  const isEnterDisabled = disabled || userAnswer === '' || userAnswer === '-';
   return (
     <div className="w-full max-w-xs mx-auto mt-6">
         <div className="grid grid-cols-3 gap-3">
@@ -39,8 +41,17 @@ const Numpad: React.FC<NumpadProps> = ({ onInput, disabled }) => {
             <NumpadButton onClick={() => onInput('0')} disabled={disabled}>0</NumpadButton>
             <NumpadButton onClick={() => onInput('.')} disabled={disabled}>.</NumpadButton>
         </div>
-        <div className="mt-3">
+        <div className="grid grid-cols-3 gap-3 mt-3">
             <button
+              type="button"
+              onClick={() => onInput('increase_difficulty')}
+              disabled={disabled}
+              aria-label="Increase Difficulty"
+              className="w-full font-roboto-slab text-xl font-bold h-16 text-pencil rounded-lg shadow-md border-b-4 border-blue-400/20 bg-blue-200/70 hover:bg-blue-200/90 active:border-b-2 active:translate-y-0.5 transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-blue-400/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              <IncreaseDifficultyIcon className="w-8 h-8"/>
+            </button>
+             <button
               type="button"
               onClick={() => onInput('backspace')}
               disabled={disabled}
@@ -49,6 +60,26 @@ const Numpad: React.FC<NumpadProps> = ({ onInput, disabled }) => {
             >
               <BackspaceIcon className="w-8 h-8"/>
             </button>
+            <button
+              type="button"
+              onClick={() => onInput('skip')}
+              disabled={disabled}
+              aria-label="Skip Question"
+              className="w-full font-roboto-slab text-xl font-bold h-16 text-pencil rounded-lg shadow-md border-b-4 border-yellow-400/20 bg-yellow-200/70 hover:bg-yellow-200/90 active:border-b-2 active:translate-y-0.5 transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-yellow-400/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              <SkipIcon className="w-8 h-8"/>
+            </button>
+      </div>
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => onInput('enter')}
+          disabled={isEnterDisabled}
+          aria-label="Submit Answer"
+          className="font-roboto-slab text-3xl font-bold h-16 text-white rounded-lg shadow-md border-b-4 border-green-700/50 bg-correct/90 hover:bg-correct active:border-b-2 active:translate-y-0.5 transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-highlighter/80 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-pencil/20 disabled:border-pencil/10 w-full flex items-center justify-center"
+        >
+          Enter
+        </button>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-export type DifficultyAdjustment = 'initial' | 'shocking_leap' | 'significant_increase' | 'moderate_increase' | 'significant_decrease' | 'moderate_decrease';
+export type DifficultyAdjustment = 'initial' | 'significant_increase' | 'moderate_increase' | 'significant_decrease' | 'moderate_decrease';
 
 export type QuestionPart =
   | { type: 'string'; value: string }
@@ -12,26 +12,22 @@ export type QuestionPart =
 export interface Problem {
   reasoning?: string;
   difficultyAdjustment: DifficultyAdjustment;
-  question: QuestionPart[];
+  questionString: string;
+  answer: number;
   estimatedTime: number; // in seconds
 }
 
-// This is what we use in the app state, combining the question with its locally-calculated answer
+// This is what we use in the app state
 export interface QuizItem {
+  reasoning?: string;
+  difficultyAdjustment: DifficultyAdjustment;
+  questionString: string;
   question: QuestionPart[];
   answer: number;
-  difficultyAdjustment: DifficultyAdjustment;
   estimatedTime: number; // in seconds
 }
 
 // This is for the pre-defined standard problems
-export interface StandardProblem {
-  question: QuestionPart[];
-  answer: number;
-  estimatedTime: number; // in seconds
-}
-
-// This is for the new, raw, string-based problem definitions
 export interface RawStandardProblem {
   questionString: string;
   answer: number;

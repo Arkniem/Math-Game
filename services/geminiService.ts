@@ -1,96 +1,48 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Problem, PerformanceRecord, QuestionPart } from '../types';
+import { Problem, PerformanceRecord } from '../types';
+import { validateAndSanitizeProblem } from "./validationService";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-// Helper to recursively convert QuestionPart[] to a simple string for history
-const stringifyQuestion = (question: QuestionPart[]): string => {
-  return question.map(part => {
-    switch (part.type) {
-      case 'string':
-        return part.value;
-      case 'fraction':
-        return `{${stringifyQuestion(part.numerator)} / ${stringifyQuestion(part.denominator)}}`;
-      case 'group':
-        return `(${stringifyQuestion(part.content)})`;
-      case 'power':
-        return `${stringifyQuestion(part.base)}^(${stringifyQuestion(part.exponent)})`;
-      case 'root':
-        return `sqrt(${stringifyQuestion(part.content)})`;
-      case 'absolute':
-        return `|${stringifyQuestion(part.content)}|`;
-      default:
-        return '';
-    }
-  }).join(' ');
-};
 
 export const generateProblem = async (performanceHistory: PerformanceRecord[]): Promise<Problem> => {
   const historySnippet = performanceHistory.length > 0
     ? `Here is the student's recent performance history. Use this to inform your next choice.
-${JSON.stringify(performanceHistory, null, 2)}`
+${JSON.stringify(performanceHistory.slice(-5), null, 2)}`
     : "The student is just starting. Please provide a very simple single-digit addition problem, set 'difficultyAdjustment' to 'initial', and give it an 'estimatedTime' of 5 seconds.";
 
   const prompt = `
-You are an expert adaptive math tutor AI. Your task is to generate a single arithmetic problem that is perfectly calibrated to the user's skill level, and to provide an estimated time for how long it should take them.
+You are an expert adaptive math tutor AI. Your task is to generate a single arithmetic problem as a string, provide its numeric answer, and estimate the time to solve it.
 
 **Your Primary Objective:**
-Find the user's performance ceiling by gradually increasing the challenge. The difficulty should ramp up smoothly to keep the user in a state of 'flow'. A key part of this is timing. You must generate a reasonable 'estimatedTime' (in seconds) for each problem.
+Find the user's performance ceiling by gradually increasing the challenge. The difficulty should ramp up smoothly to keep the user in a state of 'flow'.
 
 **How to Analyze Performance:**
-Your analysis must synthesize the relationship between **five** factors:
-1.  Question Complexity: The inherent difficulty of the problem you previously generated.
-2.  Your Estimated Time ('estimatedTime'): The time in seconds you predicted the last problem would take.
-3.  User's Actual Time ('timeTaken'): How long it actually took them.
-4.  User's Accuracy ('correct'): Whether they got the answer right.
-5.  Your Previous Action ('difficultyAdjustment'): The adjustment you made for that question.
-
-Your goal is to generate problems where a proficient user's 'timeTaken' is close to your 'estimatedTime'.
+Your analysis must synthesize the relationship between these factors: Question Complexity, Your Estimated Time, User's Actual Time, and User's Accuracy. Your goal is to generate problems where a proficient user's 'timeTaken' is close to your 'estimatedTime'.
 
 **How to Adjust Difficulty (Smooth Progression):**
--   **If CORRECT and FAST (\`timeTaken\` <= \`estimatedTime\`):** The user has mastered this level. Make a **significant, but reasonable, increase** in complexity (set 'difficultyAdjustment': 'significant_increase'). Also, set a new, appropriate 'estimatedTime' for the harder problem.
--   **If CORRECT but SLOW (\`timeTaken\` > \`estimatedTime\`):** The user succeeded but struggled with time. The problem was too hard. You MUST **decrease the difficulty**.
-    -   To determine the severity of the slowness, calculate a time threshold: \`threshold = min(estimatedTime * 1.3, estimatedTime + 10)\`. This means the time limit is 1.3x the estimate, but capped at a maximum of 10 seconds over the estimate.
-    -   If 'timeTaken' is over 'estimatedTime' but **at or below this 'threshold'**, make a **moderate decrease** ('moderate_decrease').
-    -   If 'timeTaken' is **greater than this 'threshold'**, make a **significant decrease** ('significant_decrease').
--   **If INCORRECT:** The problem was too difficult, regardless of time.
-    -   If this is a single error, make a **moderate decrease** ('moderate_decrease').
-    -   If they have been incorrect on several recent problems, make a **significant decrease** ('significant_decrease').
-
-**Target Problem Complexity:**
-As the user demonstrates skill, you should gradually generate problems that combine multiple concepts, such as negative numbers, decimals, complex/nested fractions, multi-step operations, exponents, square roots, and absolute values.
+-   **If CORRECT and FAST (\`timeTaken\` <= \`estimatedTime\`):** The user has mastered this level. Make a **significant increase** in complexity (set 'difficultyAdjustment': 'significant_increase'). A user explicitly requesting a harder problem will also use this adjustment.
+-   **If CORRECT but SLOW (\`timeTaken\` > \`estimatedTime\`):** The user struggled. You MUST **decrease the difficulty**.
+    - If 'timeTaken' is slightly over (e.g., < 30% over), make a **moderate decrease** ('moderate_decrease').
+    - If 'timeTaken' is very slow (e.g., > 30% over), make a **significant decrease** ('significant_decrease').
+-   **If INCORRECT:** The problem was too difficult. Make a **moderate decrease** ('moderate_decrease') for a single error, or a **significant decrease** ('significant_decrease') for multiple recent errors.
 
 **Rules for Generation:**
-1.  The response must be a JSON object with three keys: "difficultyAdjustment" (a string literal), "question" (the recursive array of parts), and "estimatedTime" (an integer in seconds). You can optionally include a "reasoning" key.
-2.  The "difficultyAdjustment" value MUST be one of: 'initial', 'shocking_leap', 'significant_increase', 'moderate_increase', 'significant_decrease', 'moderate_decrease'.
-3.  The "question" must follow the recursive structure:
-    -   Numbers/operators: \`{ "type": "string", "value": "..." }\`.
-    -   Fractions: \`{ "type": "fraction", "numerator": [...parts], "denominator": [...parts] }\`.
-    -   Parentheses: \`{ "type": "group", "content": [...parts] }\`.
-    -   Exponents: \`{ "type": "power", "base": [...parts], "exponent": [...parts] }\`.
-    -   Square Roots: \`{ "type": "root", "content": [...parts] }\`.
-    -   Absolute Values: \`{ "type": "absolute", "content": [...parts] }\`.
-4.  **You MUST NOT provide the answer.** Only generate the question structure.
-5.  **Variety Mandate:** Do not generate a problem that is identical to any of the questions in the provided performance history.
+1.  The response must be a valid JSON object matching the provided schema.
+2.  **Question String Formatting:** The "questionString" MUST be a mathematically valid expression.
+    - Use standard operators: +, -, *, /.
+    - Use parentheses for grouping: \`(...\`)\`.
+    - For exponents, use the caret symbol: \`base^exponent\`.
+    - **For fractions, use curly braces: \`{numerator/denominator}\`. Example: \`{1/2}\`**
+    - **For square roots, use the sqrt function: \`sqrt(...)\`. Example: \`sqrt(64)\`**
+    - **For absolute value, use vertical bars: \`|...|\`. Example: \`|-5|\`**
+3.  The "answer" MUST be the correct numeric solution to the "questionString". For answers with decimals, round to two decimal places.
+4.  The "difficultyAdjustment" value MUST be one of: 'initial', 'significant_increase', 'moderate_increase', 'significant_decrease', 'moderate_decrease'.
+5.  **Variety Mandate:** Do not generate a problem that is identical to any of the last 5 questions in the provided performance history.
 
 ${historySnippet}
 
 Based on this time-sensitive analysis, generate the next single, challenging problem now.
 `;
-
-  // FIX: The original schema had empty `properties` for nested objects, causing an API validation error.
-  // This new schema defines the structure one level deep to satisfy the validator. The model is
-  // expected to generalize the recursive structure from the detailed prompt instructions.
-  const subPartSchema = {
-    type: Type.OBJECT,
-    properties: {
-      type: { type: Type.STRING },
-      value: { type: Type.STRING, nullable: true },
-      // To prevent schema recursion, we don't define numerator/denominator/content etc. here,
-      // but the model can still generate them based on the prompt.
-    },
-    required: ['type'],
-  };
   
   const problemSchema = {
     type: Type.OBJECT,
@@ -98,27 +50,13 @@ Based on this time-sensitive analysis, generate the next single, challenging pro
       reasoning: { type: Type.STRING, nullable: true },
       difficultyAdjustment: {
         type: Type.STRING,
-        enum: ['initial', 'shocking_leap', 'significant_increase', 'moderate_increase', 'significant_decrease', 'moderate_decrease'],
+        enum: ['initial', 'significant_increase', 'moderate_increase', 'significant_decrease', 'moderate_decrease'],
       },
-      question: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            type: { type: Type.STRING },
-            value: { type: Type.STRING, nullable: true },
-            numerator: { type: Type.ARRAY, items: subPartSchema, nullable: true },
-            denominator: { type: Type.ARRAY, items: subPartSchema, nullable: true },
-            content: { type: Type.ARRAY, items: subPartSchema, nullable: true },
-            base: { type: Type.ARRAY, items: subPartSchema, nullable: true },
-            exponent: { type: Type.ARRAY, items: subPartSchema, nullable: true },
-          },
-          required: ['type'],
-        },
-      },
+      questionString: { type: Type.STRING },
+      answer: { type: Type.NUMBER },
       estimatedTime: { type: Type.INTEGER },
     },
-    required: ['difficultyAdjustment', 'question', 'estimatedTime'],
+    required: ['difficultyAdjustment', 'questionString', 'answer', 'estimatedTime'],
   };
 
   const response = await ai.models.generateContent({
@@ -134,11 +72,6 @@ Based on this time-sensitive analysis, generate the next single, challenging pro
   const jsonText = response.text.trim();
   const problemData = JSON.parse(jsonText);
 
-  if (!problemData.question || !Array.isArray(problemData.question) || !problemData.difficultyAdjustment || typeof problemData.estimatedTime !== 'number') {
-    throw new Error("Invalid problem format from API. Missing 'question', 'difficultyAdjustment', or 'estimatedTime'.");
-  }
-
-  return problemData as Problem;
+  // The new, crucial validation step.
+  return validateAndSanitizeProblem(problemData);
 };
-
-export { stringifyQuestion };
